@@ -1,0 +1,471 @@
+---
+title: "Real Data Reproducibility Workflow"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    self_contained: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+# Overview
+
+This file summarizes the face-data scripts, saved result files, and plotting scripts used for the real data figures in the manuscript.
+
+The first sections check the saved result files in `real data/results/`. Commands for rerunning the real data analyses are listed near the end of the file.
+
+# Directory setup
+
+Knit this file from the root of the reproducibility folder, the same folder that contains `Readme.md`, `simulation/`, and `real data/`.
+
+```{r directories}
+root_dir <- normalizePath(".", winslash = "/", mustWork = TRUE)
+real_code <- file.path(root_dir, "real data", "code")
+real_plot <- file.path(root_dir, "real data", "plot")
+real_results <- file.path(root_dir, "real data", "results")
+
+stopifnot(
+  dir.exists(real_code),
+  dir.exists(real_plot),
+  dir.exists(real_results)
+)
+
+data.frame(
+  component = c("real data code", "real data plot scripts", "saved real data results"),
+  path = c(real_code, real_plot, real_results)
+)
+```
+
+# Package requirements
+
+The result-file checks below use base R only. Running the real data and plotting scripts may require the following packages:
+
+- Core computation: `parallel`, `pbapply`, `igraph`, `Matrix`, `matrixStats`.
+- Face data input: `R.matlab`.
+- Spherical Frechet regression: `Directional`, `Riemann`, `spherepc`.
+- Plotting: `ggplot2`, `ggpubr`, `plot3D`.
+
+# Saved result inventory
+
+Saved CSV files in `real data/results/`:
+
+```{r saved-realdata-results}
+realdata_csv <- sort(list.files(real_results, pattern = "\\.csv$", full.names = FALSE))
+data.frame(file = realdata_csv)
+```
+
+# Workflow map
+
+```{r realdata-map}
+realdata_map <- data.frame(
+  manuscript_output = c(
+    "Figure 5",
+    "Figure 6",
+    "Figure 7",
+    "Figure 8, left",
+    "Figure 8, right",
+    "Figure S.14",
+    "Figure S.15, left",
+    "Figure S.15, right"
+  ),
+  existing_script = c(
+    "real data/code/Real data_face.R",
+    "real data/plot/plot_sphere.R",
+    "real data/code/Real data_noise face.R",
+    "real data/plot/plot_noise.R",
+    "real data/plot/plot_noise.R",
+    "real data/plot/plot_box.R",
+    "real data/plot/plot_noise.R",
+    "real data/plot/plot_noise.R"
+  ),
+  settings_or_inputs = c(
+    "Representative face images selected in the face data script",
+    "Predicted sphere points from a single run",
+    "Noise-contaminated face image examples",
+    "n1=70, ratios=seq(0, 1, 0.2), noise_sd=0.3, localized contamination",
+    "n1=70, ratios=seq(0, 0.3, 0.06), whole-image noise level",
+    "n1=70 and n1=140 original face data summaries",
+    "n1=140, ratios=seq(0, 1, 0.2), noise_sd=0.3, localized contamination",
+    "n1=140, ratios=seq(0, 0.3, 0.06), whole-image noise level"
+  ),
+  saved_result = c(
+    NA,
+    NA,
+    NA,
+    "real data_noise_ratio_70.csv",
+    "real data_noise_degree_70.csv",
+    "real data_face_70label_sphere.csv; real data_face_140label_sphere.csv; corresponding _lr and _ud files",
+    "real data_noise_ratio_140.csv",
+    "real data_noise_degree_140.csv"
+  ),
+  stringsAsFactors = FALSE
+)
+
+realdata_map
+```
+
+# Original face data summaries
+
+The original face analysis compares four methods in the following column order: `naive-knn`, `semi-knn`, `naive-nw`, `semi-nw`. The saved files contain 100 repetitions. The table below recomputes the reported averages from the saved CSV files.
+
+```{r original-face-summary}
+method_names <- c("naive-knn", "semi-knn", "naive-nw", "semi-nw")
+
+summarize_face_file <- function(filename, metric, n_label) {
+  dat <- read.csv(file.path(real_results, filename), check.names = FALSE)
+  values <- colMeans(dat[, c("V1", "V2", "V3", "V4")])
+  data.frame(
+    n_label = n_label,
+    metric = metric,
+    method = method_names,
+    mean = as.numeric(values),
+    row.names = NULL
+  )
+}
+
+face_summary <- rbind(
+  summarize_face_file("real data_face_70label_sphere.csv", "spherical geodesic MSE", 70),
+  summarize_face_file("real data_face_70label_sphere_lr.csv", "left-right MAE in degrees", 70),
+  summarize_face_file("real data_face_70label_sphere_ud.csv", "up-down MAE in degrees", 70),
+  summarize_face_file("real data_face_140label_sphere.csv", "spherical geodesic MSE", 140),
+  summarize_face_file("real data_face_140label_sphere_lr.csv", "left-right MAE in degrees", 140),
+  summarize_face_file("real data_face_140label_sphere_ud.csv", "up-down MAE in degrees", 140)
+)
+
+face_summary$mean <- round(face_summary$mean, 3)
+face_summary
+```
+
+# Noisy face data summaries
+
+The noisy face analysis uses saved CSV files for contamination proportion and noise level. The table below summarizes the saved results.
+
+```{r noisy-face-summary}
+noise_files <- c(
+  "real data_noise_ratio_70.csv",
+  "real data_noise_degree_70.csv",
+  "real data_noise_ratio_140.csv",
+  "real data_noise_degree_140.csv"
+)
+
+summarize_noise_file <- function(filename) {
+  dat <- read.csv(file.path(real_results, filename), check.names = FALSE)
+  values <- colMeans(dat[, c("V1", "V2", "V3", "V4")])
+  data.frame(
+    file = filename,
+    method = method_names,
+    mean_over_grid = round(as.numeric(values), 3),
+    stringsAsFactors = FALSE
+  )
+}
+
+do.call(rbind, lapply(noise_files, summarize_noise_file))
+```
+
+# Visual verification: figures from saved real data outputs
+
+The figures below are displayed when this document is knitted. Figure 8(a)--(b) and a representative panel of Figure S.14 are regenerated directly from the saved CSV files. Figures 6 and 7 require objects or image-processing steps created during a full analysis run, so their saved manuscript-ready PNG outputs are embedded for immediate visual verification. The computationally intensive analyses are not rerun in this section.
+
+```{r realdata-visual-verification-setup}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  stop("Package 'ggplot2' is required for the visual-verification figures.")
+}
+library(ggplot2)
+
+real_figure_dir <- file.path(real_plot, "figures")
+saved_visual_outputs <- c(
+  "Figure 6" = file.path(real_figure_dir, "face_methods.png"),
+  "Figure 7" = file.path(real_figure_dir, "face_noise.png")
+)
+regenerated_visual_inputs <- c(
+  "Figure 8(a)" = "real data_noise_ratio_70.csv",
+  "Figure 8(b)" = "real data_noise_degree_70.csv",
+  "Figure S.14 (representative panel)" = "real data_face_70label_sphere.csv; real data_face_140label_sphere.csv"
+)
+
+missing_saved_outputs <- saved_visual_outputs[
+  !file.exists(unname(saved_visual_outputs))
+]
+required_regenerated_files <- c(
+  "real data_noise_ratio_70.csv",
+  "real data_noise_degree_70.csv",
+  "real data_face_70label_sphere.csv",
+  "real data_face_140label_sphere.csv"
+)
+missing_regenerated_files <- required_regenerated_files[
+  !file.exists(file.path(real_results, required_regenerated_files))
+]
+
+if (length(missing_saved_outputs) > 0) {
+  stop(
+    "Missing saved figure outputs: ",
+    paste(basename(unname(missing_saved_outputs)), collapse = ", ")
+  )
+}
+if (length(missing_regenerated_files) > 0) {
+  stop(
+    "Missing saved result files: ",
+    paste(missing_regenerated_files, collapse = ", ")
+  )
+}
+
+rbind(
+  data.frame(
+    figure = names(saved_visual_outputs),
+    verification = "embedded saved analysis output",
+    source = basename(unname(saved_visual_outputs)),
+    row.names = NULL
+  ),
+  data.frame(
+    figure = names(regenerated_visual_inputs),
+    verification = "regenerated from saved CSV",
+    source = unname(regenerated_visual_inputs),
+    row.names = NULL
+  )
+)
+```
+
+## Saved representative analysis outputs
+
+The following images are the saved outputs used for the corresponding manuscript figures. Figure 6 visualizes the true and predicted directions for eight representative faces, while Figure 7 illustrates the two face-image contamination mechanisms.
+
+```{r display-figure-6, echo=TRUE, fig.align="center", out.width="95%", fig.cap="Figure 6 output: predictions from naive-kNN, semi-kNN, naive-NW, and semi-NW for eight representative face images. Red points are true directions and black points are predictions."}
+knitr::include_graphics(
+  saved_visual_outputs[["Figure 6"]],
+  rel_path = FALSE
+)
+```
+
+```{r display-figure-7, echo=TRUE, fig.align="center", out.width="85%", fig.cap="Figure 7 output: representative face images with increasing contamination proportion (top) and increasing noise level (bottom)."}
+knitr::include_graphics(
+  saved_visual_outputs[["Figure 7"]],
+  rel_path = FALSE
+)
+```
+
+## Helpers for figures regenerated from CSV files
+
+The input filename and horizontal grid are explicit in each chunk, so users do not need to edit hard-coded filenames or change the working directory before knitting.
+
+```{r realdata-visual-verification-helpers}
+read_realdata_result <- function(csv_file, expected_rows, required_columns) {
+  result_path <- file.path(real_results, csv_file)
+  result <- read.csv(result_path, check.names = FALSE)
+
+  if (nrow(result) != expected_rows ||
+      !all(required_columns %in% names(result))) {
+    stop(
+      sprintf(
+        "Unexpected structure for %s: found %d rows and columns %s.",
+        csv_file,
+        nrow(result),
+        paste(names(result), collapse = ", ")
+      )
+    )
+  }
+  result
+}
+
+make_noise_plot <- function(csv_file, noise_grid, x_label) {
+  result <- read_realdata_result(
+    csv_file,
+    expected_rows = length(noise_grid),
+    required_columns = c("V1", "V2", "V3", "V4")
+  )
+  methods <- c("naive-knn", "semi-knn", "naive-nw", "semi-nw")
+  plot_data <- data.frame(
+    Method = rep(methods, each = length(noise_grid)),
+    Noise = rep(noise_grid, times = length(methods)),
+    Testing_Error = as.vector(
+      as.matrix(result[, c("V1", "V2", "V3", "V4")])
+    )
+  )
+  plot_data$Method <- factor(
+    plot_data$Method,
+    levels = c("naive-nw", "naive-knn", "semi-nw", "semi-knn")
+  )
+
+  ggplot(
+    plot_data,
+    aes(
+      x = factor(Noise),
+      y = Testing_Error,
+      color = Method,
+      group = Method
+    )
+  ) +
+    geom_line(size = 1.2) +
+    geom_point(size = 2.2) +
+    scale_color_manual(
+      values = c(
+        "naive-knn" = "#7570b3",
+        "naive-nw" = "#e41a1c",
+        "semi-knn" = "#66a61e",
+        "semi-nw" = "#e6ab02"
+      )
+    ) +
+    theme_bw(base_size = 20) +
+    labs(x = x_label, y = "Testing error") +
+    theme(
+      panel.background = element_rect(fill = "white", color = NA),
+      panel.grid.major = element_line(
+        color = "grey80",
+        size = 0.5,
+        linetype = "dashed"
+      ),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.border = element_rect(color = "black", fill = NA, size = 0.8),
+      legend.position = c(0.99, 0.5),
+      legend.justification = c("right", "center"),
+      legend.background = element_rect(fill = NA, color = "grey80"),
+      legend.key = element_rect(fill = NA)
+    ) +
+    guides(color = guide_legend(title = NULL))
+}
+
+make_face_boxplot_data <- function(csv_file, n_label) {
+  result <- read_realdata_result(
+    csv_file,
+    expected_rows = 100,
+    required_columns = c("V1", "V2", "V3", "V4")
+  )
+  data.frame(
+    Error = as.vector(
+      as.matrix(result[, c("V1", "V2", "V3", "V4")])
+    ),
+    Method = rep(method_names, each = nrow(result)),
+    n = factor(n_label),
+    row.names = NULL
+  )
+}
+```
+
+## Figure 8(a): increasing contamination proportion
+
+This panel is regenerated from `real data_noise_ratio_70.csv`, which contains the AMSE values over the six contamination proportions for the four methods.
+
+```{r reproduce-figure-8a, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 8(a): AMSE under increasing proportions of localized noise contamination with 70 labeled images."}
+figure_8a <- make_noise_plot(
+  csv_file = "real data_noise_ratio_70.csv",
+  noise_grid = seq(0, 1, 0.2),
+  x_label = "The proportion of noise contamination"
+)
+figure_8a
+```
+
+## Figure 8(b): increasing noise level
+
+This panel is regenerated from `real data_noise_degree_70.csv`, which contains the AMSE values over the six noise standard deviations for the four methods.
+
+```{r reproduce-figure-8b, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 8(b): AMSE under increasing whole-image noise levels with 70 labeled images."}
+figure_8b <- make_noise_plot(
+  csv_file = "real data_noise_degree_70.csv",
+  noise_grid = seq(0, 0.3, 0.06),
+  x_label = "Standard deviation of noise"
+)
+figure_8b
+```
+
+## Figure S.14: original face-data error distributions
+
+The full supplementary figure reports spherical geodesic MSE and the two angle errors. The representative panel below regenerates the spherical geodesic MSE boxplot from all 100 repetitions for both labeled sample sizes.
+
+```{r reproduce-figure-s14, fig.width=9, fig.height=5, fig.align="center", out.width="85%", fig.cap="Reproduced Figure S.14 panel: spherical geodesic MSE distributions over 100 repetitions with 70 or 140 labeled images."}
+face_boxplot_data <- rbind(
+  make_face_boxplot_data("real data_face_70label_sphere.csv", 70),
+  make_face_boxplot_data("real data_face_140label_sphere.csv", 140)
+)
+face_boxplot_data$Method <- factor(
+  face_boxplot_data$Method,
+  levels = c("naive-knn", "semi-knn", "naive-nw", "semi-nw")
+)
+
+figure_s14 <- ggplot(
+  face_boxplot_data,
+  aes(x = Method, y = Error, fill = n)
+) +
+  geom_boxplot(
+    width = 0.72,
+    position = position_dodge(width = 0.8),
+    outlier.size = 1.2
+  ) +
+  scale_fill_manual(
+    values = c("70" = "#E64B35", "140" = "#4DBBD5"),
+    name = "Labeled n"
+  ) +
+  theme_bw(base_size = 16) +
+  labs(x = "Method", y = "Spherical geodesic MSE") +
+  theme(
+    axis.text.x = element_text(color = "black", angle = 0),
+    axis.text.y = element_text(color = "black"),
+    axis.line = element_line(color = "black"),
+    panel.border = element_rect(
+      color = "black",
+      linetype = "solid",
+      size = 1.2,
+      fill = NA
+    )
+  )
+figure_s14
+```
+
+## Optional standalone figure exports
+
+The original scripts in `real data/plot/` can still be used to create standalone files. These commands are not evaluated while knitting because the scripts write output files and contain hard-coded inputs. The sphere script additionally requires objects created by a single run of `Real data_face.R`.
+
+```{r export-standalone-realdata-plots, eval=FALSE}
+old_dir <- getwd()
+setwd(real_results)
+
+# plot_box.R: boxplots for Figure S.14.
+source(file.path(real_plot, "plot_box.R"))
+
+# plot_noise.R: noise-contamination and noise-level curves for Figure 8 and Figure S.15.
+source(file.path(real_plot, "plot_noise.R"))
+
+# plot_sphere.R: sphere visualizations for Figure 6.
+# This script uses objects created by a single run of Real data_face.R.
+
+setwd(old_dir)
+```
+
+# Rerunning real data analyses
+
+The following chunks are set to `eval=FALSE` because the analyses use parallel computation and may take some computational time. Before running them, check the intended values of parameters such as `n1` and `ratios`.
+
+```{r rerun-original-face-analysis, eval=FALSE}
+old_dir <- getwd()
+setwd(real_code)
+
+# Real data_face.R runs the original face-data analysis for Figures 5, 6, and S.14.
+source("Real data_face.R")
+
+setwd(old_dir)
+```
+
+```{r rerun-noisy-face-analysis, eval=FALSE}
+old_dir <- getwd()
+setwd(real_code)
+
+# Real data_noise face.R runs the noisy-face analysis for Figures 7, 8, and S.15.
+source("Real data_noise face.R")
+
+setwd(old_dir)
+```
+
+# Session information
+
+The saved real data results were generated using R version 4.5.0. The following output records the R environment used to render this document.
+
+```{r session-info}
+sessionInfo()
+```

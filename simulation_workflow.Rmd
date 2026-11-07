@@ -1,0 +1,552 @@
+---
+title: "Simulation Reproducibility Workflow"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    self_contained: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+# Overview
+
+This file summarizes the simulation scripts, saved result files, and plotting scripts used for the simulation figures in the manuscript "Efficient Semi-supervised Frechet Regression with Low-dimensional Manifold Structures".
+
+The first sections check the saved CSV files in `simulation/results/`. Commands for rerunning the experiments are listed near the end of the file.
+
+# Directory setup
+
+Knit this file from the root of the reproducibility folder, the same folder that contains `Readme.md`, `simulation/`, and `real data/`.
+
+```{r directories}
+root_dir <- normalizePath(".", winslash = "/", mustWork = TRUE)
+sim_code <- file.path(root_dir, "simulation", "code")
+sim_plot <- file.path(root_dir, "simulation", "plot")
+sim_results <- file.path(root_dir, "simulation", "results")
+
+stopifnot(
+  dir.exists(sim_code),
+  dir.exists(sim_plot),
+  dir.exists(sim_results)
+)
+
+data.frame(
+  component = c("simulation code", "simulation plot scripts", "saved simulation results"),
+  path = c(sim_code, sim_plot, sim_results)
+)
+```
+
+# Package requirements
+
+The result-file checks below use base R only. Running the simulation and plotting scripts may require the following packages:
+
+- Core computation: `parallel`, `pbapply`, `igraph`, `Matrix`, `matrixStats`.
+- SPD response simulations: `shapes`, `RiemBase`, `tmvtnorm`.
+- Spherical response simulations: `Directional`, `Riemann`, `spherepc`, `tmvtnorm`.
+- Radius experiments: `FNN`, `pracma`.
+- Plotting: `ggplot2`, `scatterplot3d`.
+
+# Saved result inventory
+
+Saved CSV files in `simulation/results/`:
+
+```{r saved-simulation-results}
+simulation_csv <- sort(list.files(sim_results, pattern = "\\.csv$", full.names = FALSE))
+data.frame(file = simulation_csv)
+```
+
+# Main-text simulation figures
+
+The table links the main-text figures to the saved result files and the scripts/settings that generated them.
+
+```{r main-simulation-map}
+main_simulation_map <- data.frame(
+  figure = c(
+    "Figure 1",
+    "Figure 2(a)",
+    "Figure 2(b)",
+    "Figure 2(c)",
+    "Figure 2(d)",
+    "Figure 3(a)",
+    "Figure 3(b)",
+    "Figure 3(c)",
+    "Figure 3(d)",
+    "Figure 4(a)",
+    "Figure 4(b)",
+    "Figure 4(c)",
+    "Figure 4(d)"
+  ),
+  existing_script = c(
+    "simulation/plot/plot_swiss roll.R",
+    rep("simulation/code/main_spd.R", 4),
+    rep("simulation/code/main_spd.R", 4),
+    "simulation/code/radius_spd.R",
+    "simulation/code/rate_spd.R",
+    "simulation/code/main_spd.R",
+    "simulation/code/curve_spd.R"
+  ),
+  settings = c(
+    "Swiss roll illustration",
+    'scenario="Swiss", setting=1, snr=2, method="LogEuclidean", n1=100, NN=8000, n3=1000',
+    'scenario="Swiss", setting=1, snr=4, method="LogEuclidean", n1=100, NN=8000, n3=1000',
+    'scenario="Swiss", setting=2, snr=2, method="LogEuclidean", n1=100, NN=8000, n3=1000',
+    'scenario="Swiss", setting=2, snr=4, method="LogEuclidean", n1=100, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=1, snr=2, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=1, snr=4, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=2, snr=2, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=2, snr=4, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=1, snr=2, method="LogEuclidean", n1=200, n2=3000, n3=1000',
+    'scenario="Swiss2", setting=4, snr=2, method="LogEuclidean", unlabeled n1=3000, labeled NN=1500, n3=1000',
+    'scenario="Swiss5", setting=3, snr=2, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'Curve setting, snr=2, n1=100, NN=8000, n3=1000'
+  ),
+  saved_result = c(
+    NA,
+    "spd-100-8000-1000-Swiss-setting1-snr_2.csv",
+    "spd-100-8000-1000-Swiss-setting1-snr_4.csv",
+    "spd-100-8000-1000-Swiss-setting2-snr_2.csv",
+    "spd-100-8000-1000-Swiss-setting2-snr_4.csv",
+    "spd-200-8000-1000-Swiss2-setting1-snr_2.csv",
+    "spd-200-8000-1000-Swiss2-setting1-snr_4.csv",
+    "spd-200-8000-1000-Swiss2-setting2-snr_2.csv",
+    "spd-200-8000-1000-Swiss2-setting2-snr_4.csv",
+    "spd-200-3000-1000-Swiss2-setting1_snr_2_r_impaction.csv",
+    "spd-1200-3000-1000-Swiss2-setting4-snr_2_rate.csv",
+    "spd-200-8000-1000-Swiss5-setting3-snr_2.csv",
+    "spd-100-8000-1000-Curve-snr_2.csv"
+  ),
+  stringsAsFactors = FALSE
+)
+
+main_simulation_map
+```
+
+# Supplementary simulation figures
+
+```{r supplementary-simulation-map}
+supplementary_simulation_map <- data.frame(
+  figure = c(
+    "Figure S.1(a)", "Figure S.1(b)",
+    "Figure S.2(a)", "Figure S.2(b)",
+    "Figure S.3(a)", "Figure S.3(b)",
+    "Figure S.4(a)", "Figure S.4(b)",
+    "Figure S.5(a)", "Figure S.5(b)",
+    "Figure S.6",
+    "Figure S.7",
+    "Figure S.8",
+    "Figure S.9(a)", "Figure S.9(b)",
+    "Figure S.10(a)", "Figure S.10(b)",
+    "Figure S.11(a)", "Figure S.11(b)",
+    "Figure S.12(a)", "Figure S.12(b)",
+    "Figure S.13(a)", "Figure S.13(b)"
+  ),
+  existing_script = c(
+    "simulation/code/main_spd.R", "simulation/code/main_sphere.R",
+    "simulation/code/main_spd.R", "simulation/code/main_sphere.R",
+    "simulation/code/main_spd.R", "simulation/code/main_spd.R",
+    "simulation/code/main_spd.R", "simulation/code/main_spd.R",
+    "simulation/code/radius_spd.R", "simulation/code/radius_sphere.R",
+    "simulation/code/rate_spd.R",
+    "simulation/code/rate_sphere.R",
+    "simulation/code/rate_spd.R",
+    "simulation/code/main_spd.R", "simulation/code/main_spd.R",
+    "simulation/code/main_sphere.R", "simulation/code/main_sphere.R",
+    "simulation/code/curve_spd.R", "simulation/code/curve_sphere.R",
+    "simulation/code/main_sphere.R", "simulation/code/main_sphere.R",
+    "simulation/code/main_sphere.R", "simulation/code/main_sphere.R"
+  ),
+  settings = c(
+    'scenario="Swiss3", setting=2, snr=4, method="LogEuclidean", n1=100, NN=8000, n3=1000',
+    'scenario="Swiss3", kappa=5, sigma=0.25, n1=100, NN=8000, n3=1000',
+    'scenario="Swiss4", setting=2, snr=4, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss4", kappa=5, sigma=0.25, n1=200, NN=8000, n3=1000',
+    'scenario="Swiss", setting=2, snr=2, method="LogCholesky", n1=100, NN=8000, n3=1000',
+    'scenario="Swiss", setting=2, snr=4, method="LogCholesky", n1=100, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=2, snr=2, method="LogCholesky", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=2, snr=4, method="LogCholesky", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss2", setting=1, snr=2, method="LogEuclidean", n1=200, n2=3000, n3=1000',
+    'scenario="Swiss2", kappa=0, sigma=0.25, n1=200, n2=3000, n3=1000',
+    'scenario="Swiss2", setting=1, snr=2, method="LogEuclidean", unlabeled n1=3000, labeled NN=1500, n3=1000',
+    'scenario="Swiss2", kappa=0, sigma=0.25, unlabeled n1=3000, labeled NN=1500, n3=1000',
+    'scenario="Swiss2", setting=4, snr=2, method="LogEuclidean", unlabeled n1=3000, labeled NN=1500, n3=1000',
+    'scenario="Swiss5", setting=3, snr=2, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss5", setting=3, snr=4, method="LogEuclidean", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss5", kappa=0, sigma=0.25, n1=200, NN=8000, n3=1000',
+    'scenario="Swiss5", kappa=5, sigma=0.25, n1=200, NN=8000, n3=1000',
+    'Curve setting, snr=2, n1=100, NN=8000, n3=1000',
+    'Curve setting, kappa=0, sigma=0.25, n1=100, NN=8000, n3=1000',
+    'scenario="Swiss", kappa=0, sigma=0.25, n1=100, NN=8000, n3=1000',
+    'scenario="Swiss", kappa=5, sigma=0.25, n1=100, NN=8000, n3=1000',
+    'scenario="Swiss2", kappa=0, sigma=0.25, n1=200, NN=8000, n3=1000',
+    'scenario="Swiss2", kappa=5, sigma=0.25, n1=200, NN=8000, n3=1000'
+  ),
+  saved_result = c(
+    "spd-100-8000-1000-Swiss3-setting2-snr_4.csv",
+    "sphere-100-8000-1000-Swiss3-setting2_0.25.csv",
+    "spd-200-8000-1000-Swiss4-setting2-snr_4.csv",
+    "sphere-200-8000-1000-Swiss4-setting2_0.25.csv",
+    "spd-100-8000-1000-Swiss-setting2-snr_2_logcholesky.csv",
+    "spd-100-8000-1000-Swiss-setting2-snr_4_logcholesky.csv",
+    "spd-200-8000-1000-Swiss2-setting2-snr_2_logcholesky.csv",
+    "spd-200-8000-1000-Swiss2-setting2-snr_4_logcholesky.csv",
+    "spd-200-3000-1000-Swiss2-setting1_snr_2_r_impaction.csv",
+    "sphere-200-3000-1000-Swiss2-setting1_0.25_r_impaction.csv",
+    "spd-1200-3000-1000-Swiss2-setting1-snr_2_rate.csv",
+    "sphere-1200-3000-1000-Swiss2-setting1_0.25_rate.csv",
+    "spd-1200-3000-1000-Swiss2-setting4-snr_2_rate.csv",
+    "spd-200-8000-1000-Swiss5-setting3-snr_2.csv",
+    "spd-200-8000-1000-Swiss5-setting3-snr_4.csv",
+    "sphere-200-8000-1000-Swiss5-setting1_0.25.csv",
+    "sphere-200-8000-1000-Swiss5-setting2_0.25.csv",
+    "spd-100-8000-1000-Curve-snr_2.csv",
+    "sphere-100-8000-1000-Curve-0.25.csv",
+    "sphere-100-8000-1000-Swiss-setting1_0.25.csv",
+    "sphere-100-8000-1000-Swiss-setting2_0.25.csv",
+    "sphere-200-8000-1000-Swiss2-setting1_0.25.csv",
+    "sphere-200-8000-1000-Swiss2-setting2_0.25.csv"
+  ),
+  stringsAsFactors = FALSE
+)
+
+supplementary_simulation_map
+```
+
+# Visual verification: figures regenerated from saved CSV files
+
+The four panels below are regenerated directly from the saved CSV files and are displayed when this document is knitted. They reproduce Figure 4(a)--(d) in the manuscript and cover the four plotting workflows: graph-radius sensitivity, empirical convergence rate, the no-manifold setting, and comparison with oracle procedures. The time-consuming simulations are not rerun in this section.
+
+```{r visual-verification-setup}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  stop("Package 'ggplot2' is required for the visual-verification figures.")
+}
+library(ggplot2)
+
+visual_verification_files <- c(
+  "Figure 4(a)" = "spd-200-3000-1000-Swiss2-setting1_snr_2_r_impaction.csv",
+  "Figure 4(b)" = "spd-1200-3000-1000-Swiss2-setting4-snr_2_rate.csv",
+  "Figure 4(c)" = "spd-200-8000-1000-Swiss5-setting3-snr_2.csv",
+  "Figure 4(d)" = "spd-100-8000-1000-Curve-snr_2.csv"
+)
+
+visual_verification_paths <- file.path(
+  sim_results,
+  unname(visual_verification_files)
+)
+missing_visual_files <- visual_verification_files[
+  !file.exists(visual_verification_paths)
+]
+if (length(missing_visual_files) > 0) {
+  stop(
+    "Missing saved result files: ",
+    paste(unname(missing_visual_files), collapse = ", ")
+  )
+}
+
+data.frame(
+  figure = names(visual_verification_files),
+  saved_result = unname(visual_verification_files),
+  row.names = NULL
+)
+```
+
+The following helpers read a named result file and apply the plotting style used by the manuscript scripts. The input filename is explicit so that the document does not depend on editing a hard-coded filename or changing the working directory.
+
+```{r visual-verification-helpers}
+read_simulation_result <- function(csv_file, expected_rows, minimum_columns) {
+  result_path <- file.path(sim_results, csv_file)
+  result <- as.matrix(read.csv(result_path))
+  storage.mode(result) <- "double"
+
+  if (nrow(result) != expected_rows || ncol(result) < minimum_columns) {
+    stop(
+      sprintf(
+        "Unexpected dimensions for %s: found %d rows and %d columns.",
+        csv_file, nrow(result), ncol(result)
+      )
+    )
+  }
+  result
+}
+
+make_simulation_line_plot <- function(
+    csv_file,
+    methods,
+    method_levels,
+    samples,
+    value_columns,
+    colors,
+    x_label,
+    y_limits = NULL,
+    legend_position = c(0.99, 0.5),
+    legend_justification = c("right", "center")) {
+  result <- read_simulation_result(
+    csv_file,
+    expected_rows = length(samples),
+    minimum_columns = max(value_columns)
+  )
+
+  plot_data <- data.frame(
+    Method = rep(methods, each = length(samples)),
+    Samples = rep(samples, times = length(methods)),
+    Testing_Error = as.vector(result[, value_columns, drop = FALSE])
+  )
+  plot_data$Method <- factor(plot_data$Method, levels = method_levels)
+
+  figure <- ggplot(
+    plot_data,
+    aes(
+      x = factor(Samples),
+      y = Testing_Error,
+      color = Method,
+      group = Method
+    )
+  ) +
+    geom_line(size = 1.2) +
+    geom_point(size = 2.2) +
+    scale_color_manual(values = colors) +
+    theme_bw(base_size = 20) +
+    labs(x = x_label, y = "Testing error") +
+    theme(
+      panel.background = element_rect(fill = "white", color = NA),
+      panel.grid.major = element_line(
+        color = "grey80",
+        size = 0.5,
+        linetype = "dashed"
+      ),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.border = element_rect(color = "black", fill = NA, size = 0.8),
+      legend.position = legend_position,
+      legend.justification = legend_justification,
+      legend.background = element_rect(fill = NA, color = "grey80"),
+      legend.key = element_rect(fill = NA)
+    ) +
+    guides(color = guide_legend(title = NULL))
+
+  if (!is.null(y_limits)) {
+    figure <- figure + coord_cartesian(ylim = y_limits)
+  }
+  figure
+}
+```
+
+## Figure 4(a): graph-radius sensitivity
+
+This panel is regenerated from `spd-200-3000-1000-Swiss2-setting1_snr_2_r_impaction.csv`.
+
+```{r reproduce-figure-4a, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 4(a): effect of graph radius on the testing errors of semi-kNN and semi-NW."}
+figure_4a <- make_simulation_line_plot(
+  csv_file = visual_verification_files[["Figure 4(a)"]],
+  methods = c("semi-knn", "semi-nw"),
+  method_levels = c("semi-nw", "semi-knn"),
+  samples = seq(0.5, 2, 0.1),
+  value_columns = 2:3,
+  colors = c("semi-knn" = "#66a61e", "semi-nw" = "#e6ab02"),
+  x_label = expression("Graph radius (" * "×" ~ r[0] * ")"),
+  legend_position = c(0.99, 0.98),
+  legend_justification = c("right", "top")
+)
+figure_4a
+```
+
+## Figure 4(b): empirical convergence rate
+
+The saved rate file stores semi-kNN in column `V1` and semi-NW in column `V2`. The manuscript panel uses semi-kNN, so the chunk below explicitly selects `V1` and reports the fitted slope and $R^2$ together with the plot.
+
+```{r reproduce-figure-4b, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 4(b): log(AMSE) against log(n) for the semi-kNN estimator."}
+rate_result <- read_simulation_result(
+  visual_verification_files[["Figure 4(b)"]],
+  expected_rows = 8,
+  minimum_columns = 3
+)
+rate_sample_sizes <- seq(500, 1200, 100)
+rate_x <- log(rate_sample_sizes)
+rate_y <- log(rate_result[, 2])
+rate_model <- lm(rate_y ~ rate_x)
+
+old_par <- par(no.readonly = TRUE)
+par(mar = c(5, 6, 4, 2) + 0.1)
+plot(
+  rate_x,
+  rate_y,
+  type = "o",
+  lty = 2,
+  lwd = 2.7,
+  col = "#66a61e",
+  pch = 16,
+  xlab = "ln(n)",
+  ylab = "ln(AMSE)",
+  cex.lab = 1.8,
+  cex.axis = 1.2,
+  col.main = "black",
+  col.lab = "black",
+  col.axis = "black",
+  bg = "white"
+)
+abline(rate_model, col = "#66a61e", lwd = 2.7, lty = 1)
+grid(col = "grey80", lty = c(8, 4), lwd = 0.8)
+box(col = "black", lwd = 1)
+par(old_par)
+
+data.frame(
+  method = "semi-knn",
+  fitted_slope = unname(coef(rate_model)[2]),
+  r_squared = summary(rate_model)$r.squared
+)
+```
+
+## Figure 4(c): covariates without a low-dimensional manifold structure
+
+This panel is regenerated from `spd-200-8000-1000-Swiss5-setting3-snr_2.csv`. Unlike the standard four-method result files, this CSV stores the two naive-method means in `V1` and `V2` and the two semi-supervised means used in the manuscript panel in `V5` and `V6`.
+
+```{r reproduce-figure-4c, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 4(c): testing errors when the covariates do not have a low-dimensional manifold structure."}
+figure_4c <- make_simulation_line_plot(
+  csv_file = visual_verification_files[["Figure 4(c)"]],
+  methods = c("naive-knn", "naive-nw", "semi-knn", "semi-nw"),
+  method_levels = c("naive-nw", "naive-knn", "semi-nw", "semi-knn"),
+  samples = c(0, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000),
+  value_columns = c(2, 3, 6, 7),
+  colors = c(
+    "naive-knn" = "#7570b3",
+    "naive-nw" = "#e41a1c",
+    "semi-knn" = "#66a61e",
+    "semi-nw" = "#e6ab02"
+  ),
+  x_label = "Unlabeled sample size",
+  y_limits = c(0.7, 1.1)
+)
+figure_4c
+```
+
+## Figure 4(d): comparison with oracle procedures
+
+This panel is regenerated from `spd-100-8000-1000-Curve-snr_2.csv`.
+
+```{r reproduce-figure-4d, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 4(d): semi-supervised procedures compared with their oracle counterparts."}
+figure_4d <- make_simulation_line_plot(
+  csv_file = visual_verification_files[["Figure 4(d)"]],
+  methods = c("knn", "nw", "naive-knn", "naive-nw", "semi-knn", "semi-nw"),
+  method_levels = c(
+    "naive-nw", "naive-knn",
+    "semi-nw", "semi-knn",
+    "nw", "knn"
+  ),
+  samples = c(0, 100, 200, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000),
+  value_columns = 2:7,
+  colors = c(
+    "knn" = "#377eb8",
+    "nw" = "#8c510a",
+    "naive-knn" = "#7570b3",
+    "naive-nw" = "#e41a1c",
+    "semi-knn" = "#66a61e",
+    "semi-nw" = "#e6ab02"
+  ),
+  x_label = "Unlabeled sample size",
+  y_limits = c(0, 0.8)
+)
+figure_4d
+```
+
+## Optional standalone figure exports
+
+The original scripts in `simulation/plot/` can still be used to create standalone figure files. These commands are not evaluated while knitting because the scripts write output files and some contain a hard-coded input filename that must first be set to the desired CSV file.
+
+```{r export-standalone-simulation-plots, eval=FALSE}
+old_dir <- getwd()
+setwd(sim_results)
+
+# plot_main.R: line charts for Figures 2, 3, S.1-S.4, S.9, S.10, S.12, and S.13.
+source(file.path(sim_plot, "plot_main.R"))
+
+# plot_radius.R: graph-radius curves for Figure 4(a) and Figure S.5.
+source(file.path(sim_plot, "plot_radius.R"))
+
+# plot_rate.R: log(AMSE)-log(n) curves for Figure 4(b) and Figures S.6-S.8.
+source(file.path(sim_plot, "plot_rate.R"))
+
+# plot_curve.R: oracle-comparison curves for Figure 4(d) and Figure S.11.
+source(file.path(sim_plot, "plot_curve.R"))
+
+setwd(old_dir)
+```
+
+# Rerunning simulations
+
+The following chunks are set to `eval=FALSE` because the simulations are relatively time-consuming. Before running them, check the parameter settings listed in the tables above and in the header of each script.
+
+```{r rerun-main-spd, eval=FALSE}
+old_dir <- getwd()
+setwd(sim_code)
+
+# main_spd.R runs the SPD-matrix response simulations:
+# Figures 2 and 3; Figure 4(c); Figures S.1(a), S.2(a), S.3, S.4, and S.9.
+source("main_spd.R")
+
+setwd(old_dir)
+```
+
+```{r rerun-main-sphere, eval=FALSE}
+old_dir <- getwd()
+setwd(sim_code)
+
+# main_sphere.R runs the spherical-response simulations:
+# Figures S.1(b), S.2(b), S.10, S.12, and S.13.
+source("main_sphere.R")
+
+setwd(old_dir)
+```
+
+```{r rerun-radius-experiments, eval=FALSE}
+old_dir <- getwd()
+setwd(sim_code)
+
+# radius_spd.R runs the SPD graph-radius experiment for Figure 4(a) and Figure S.5(a).
+source("radius_spd.R")
+
+# radius_sphere.R runs the spherical graph-radius experiment for Figure S.5(b).
+source("radius_sphere.R")
+
+setwd(old_dir)
+```
+
+```{r rerun-rate-experiments, eval=FALSE}
+old_dir <- getwd()
+setwd(sim_code)
+
+# rate_spd.R runs the SPD empirical-rate experiments for Figure 4(b) and Figures S.6 and S.8.
+source("rate_spd.R")
+
+# rate_sphere.R runs the spherical empirical-rate experiment for Figure S.7.
+source("rate_sphere.R")
+
+setwd(old_dir)
+```
+
+```{r rerun-curve-experiments, eval=FALSE}
+old_dir <- getwd()
+setwd(sim_code)
+
+# curve_spd.R runs the SPD oracle-comparison experiment for Figure 4(d) and Figure S.11(a).
+source("curve_spd.R")
+
+# curve_sphere.R runs the spherical oracle-comparison experiment for Figure S.11(b).
+source("curve_sphere.R")
+
+setwd(old_dir)
+```
+
+# Session information
+
+The saved simulation results were generated using R version 4.5.0. The following output records the R environment used to render this document.
+
+```{r session-info}
+sessionInfo()
+```
