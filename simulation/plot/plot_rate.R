@@ -10,7 +10,7 @@
 # Load data
 data <- as.matrix(read.csv('spd-1200-3000-1000-Swiss2-setting4-snr_2_rate.csv'))
 
-# Prepare sample points and take log base 2
+# Prepare sample points and take natural logs
 x <- log(seq(500,1200,100))
 y <- log(data[,3])
 
@@ -31,11 +31,10 @@ grid()
 # Fit a linear model (least squares)
 model <- lm(y ~ x)
 
-# Add fitted line or theoretical line
-abline(model, col=plotcol, lwd=2.7, lty=1)
-#custom_slope <- -0.387
-#intercept <- mean(y) - custom_slope * mean(x)
-#abline(a = intercept, b = custom_slope, col=plotcol, lwd=2.7, lty=1)
+# Add the theoretical reference line
+custom_slope <- -0.387
+intercept <- mean(y) - custom_slope * mean(x)
+abline(a = intercept, b = custom_slope, col=plotcol, lwd=2.7, lty=1)
 
 # Add grid lines
 grid(col="grey80", lty=c(8,4), lwd=0.8)

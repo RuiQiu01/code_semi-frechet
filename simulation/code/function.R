@@ -912,3 +912,159 @@ generate_test_sphere_curve <- function(N) {
   text_sphere <- list(U=U_data, X=X_data, Y=Y_data)
   return(text_sphere)
 }
+
+#######################log-Cholesky coordinates####################
+# Log-Cholesky coordinates in the order used by R's upper Cholesky factor.
+# Squared Euclidean distances here equal distLogCholesky(A, B)^2.
+lc_coordinates <- function(y) {
+  r <- chol(y)
+  c(r[upper.tri(r)], log(diag(r)))
+}
+
+#######################conditional mean for Setting II####################
+# Recover the scale used by generate_label_spd(setting = 2) from the same
+# labeled design. The six signal entries are (1, f1, f2, 1, f1, 1).
+lc_setting2_sigma <- function(u, snr) {
+  f1 <- 0.8 * cos(4 * pi * drop(u %*% c(0.75, 0.25)))
+  f2 <- 0.4 * cos(4 * pi * drop(u %*% c(0.25, 0.75)))
+  sqrt((2 * var(f1) + var(f2)) / (4.5 * snr))
+}
+
+# In these coordinates the conditional Frechet mean is E[coords(Y) | x, sigma].
+# The noiseless matrices from generate_test_spd supply exp(D(x)).
+lc_reference <- function(noiseless, sigma, pairs) {
+  n_test <- dim(noiseless)[3L]
+  center <- matrix(0, n_test, 6L)
+  mc_variance <- numeric(n_test)
+  for (i in seq_len(n_test)) {
+    location <- matrix.log(noiseless[, , i])
+    pair_means <- vapply(seq_len(pairs), function(j) {
+      # Independent antithetic pairs from the Gaussian noise law of Setting II.
+      noise <- matrix(0, 3L, 3L)
+      noise[upper.tri(noise)] <- rnorm(3L, sd = sigma / sqrt(2))
+      noise <- noise + t(noise)
+      diag(noise) <- rnorm(3L, sd = sigma)
+      plus  <- lc_coordinates(matrix.exp(location + noise))
+      minus <- lc_coordinates(matrix.exp(location - noise))
+      (plus + minus) / 2
+    }, numeric(6L))
+    center[i, ] <- rowMeans(pair_means)
+    # Trace of the estimated covariance of the mean of the independent pairs.
+    mc_variance[i] <- sum((pair_means - center[i, ])^2) / (pairs * (pairs - 1))
+  }
+  list(center = center, mc_variance = mc_variance)
+}
+
+#######################knn and nw prediction####################
+# In log-Cholesky coordinates, squared distances are squared Euclidean distances
+# and weighted Fréchet means are weighted arithmetic means.
+lc_knn_predictions <- function(dis, coords, k_values, fallback) {
+  max_k <- max(k_values)
+  n <- nrow(dis)
+  neighbors <- matrix(NA_integer_, n, max_k)
+  for (i in seq_len(n)) {
+    available <- which(is.finite(dis[i, ]))
+    ids <- head(available[order(dis[i, available])], max_k)
+    if (!length(ids)) ids <- fallback[i]
+    neighbors[i, seq_along(ids)] <- ids
+  }
+  # Share the partial sums across all k in leave-one-out cross-validation.
+  total <- matrix(0, n, ncol(coords))
+  count <- integer(n)
+  fits <- vector("list", length(k_values))
+  for (k in seq_len(max_k)) {
+    ids <- neighbors[, k]
+    keep <- !is.na(ids)
+    total[keep, ] <- total[keep, , drop = FALSE] + coords[ids[keep], , drop = FALSE]
+    count <- count + keep
+    if (k %in% k_values) fits[[match(k, k_values)]] <- total / count
+  }
+  fits
+}
+
+lc_nw_prediction <- function(dis, coords, h, fallback) {
+  # Inf can occur if most labels are isolated. K_Epa then gives zero weight
+  # to every point. At zero bandwidth, only exact matches receive weight.
+  if (is.infinite(h)) return(coords[fallback, , drop = FALSE])
+  weights <- if (h == 0) 1 * (dis == 0) else K_Epa(dis, h)
+  totals <- rowSums(weights)
+  empty <- which(totals == 0)
+  weights[cbind(empty, fallback[empty])] <- 1
+  totals[empty] <- 1
+  (weights %*% coords) / totals
+}
+
+#######################leave-one-out cross-validation####################
+lc_tune <- function(dis, coords) {
+  diag(dis) <- Inf
+  h0 <- median(matrixStats::rowMins(dis))
+  k_values <- seq_len(min(10L, nrow(coords) - 1L))
+  h_values <- h0 * 5^seq(0, 1, by = 0.1)
+  folds <- seq_len(min(nrow(coords), 200L))
+  held_out <- dis[folds, , drop = FALSE]
+  # As in main_spd.R, the empty-neighborhood fallback is the first other
+  # label during validation, and the last training label during prediction.
+  fallback <- ifelse(folds == 1L, 2L, 1L)
+  loss <- function(prediction) sum((prediction - coords[folds, , drop = FALSE])^2)
+  k_errors <- vapply(lc_knn_predictions(held_out, coords, k_values, fallback), loss, numeric(1))
+  h_errors <- vapply(h_values, function(h) {
+    loss(lc_nw_prediction(held_out, coords, h, fallback))
+  }, numeric(1))
+  list(k = k_values[which.min(k_errors)], k_error = min(k_errors),
+       h = h_values[which.min(h_errors)], h_error = min(h_errors))
+}
+
+#######################candidate graph radii####################
+lc_radius_candidates <- function(dist_total, n) {
+  # dist_total stores the lower triangle by column. In column i, only the
+  # distances to vertices i+1, ..., n belong to the current training sample.
+  size <- attr(dist_total, "Size")
+  column_start <- c(0, cumsum(as.double(rev(seq_len(size - 1L)))))
+  distances_below <- function(i) dist_total[column_start[i] + seq_len(n - i)]
+  columns <- seq_len(n - 1L)
+  nearest <- rep(Inf, n)
+  for (i in columns) {
+    ds <- distances_below(i)
+    after <- seq.int(i + 1L, n)
+    nearest[i] <- min(nearest[i], ds)
+    nearest[after] <- pmin(nearest[after], ds)
+  }
+  R <- max(nearest)
+  rrange <- R * seq(0.5, 2, by = 0.1)
+  max_radius <- max(rrange)
+  # Store edges only once for all candidate radii.
+  pairs <- do.call(rbind, lapply(columns, function(i) {
+    ds <- distances_below(i)
+    keep <- which(ds > 0 & ds <= max_radius)
+    cbind(from = rep.int(i, length(keep)), to = i + keep, weight = ds[keep])
+  }))
+  list(rrange = rrange, pairs = pairs)
+}
+
+#######################radius graph####################
+lc_radius_graph <- function(pairs, n, r) {
+  edges <- pairs[pairs[, "weight"] <= r, , drop = FALSE]
+  g <- igraph::make_empty_graph(n, directed = FALSE)
+  if (nrow(edges)) {
+    ends <- as.vector(rbind(edges[, "from"], edges[, "to"]))
+    g <- igraph::add_edges(g, ends, attr = list(weight = edges[, "weight"]))
+  }
+  g
+}
+
+#######################graph distances from test points to labels####################
+lc_query_distances <- function(graph_dis_total, dist_test, r) {
+  n1 <- nrow(graph_dis_total)
+  vertices <- seq_len(ncol(graph_dis_total))
+  graph_dis <- matrix(Inf, nrow(dist_test), n1)
+  for (i in seq_len(nrow(dist_test))) {
+    ds <- dist_test[i, vertices]
+    near <- which(ds <= r)
+    if (length(near)) {
+      # A query can enter the graph through any vertex within radius r.
+      via <- sweep(graph_dis_total[, near, drop = FALSE], 2L, ds[near], "+")
+      graph_dis[i, ] <- matrixStats::rowMins(via)
+    }
+  }
+  graph_dis
+}
