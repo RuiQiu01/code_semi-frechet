@@ -151,8 +151,7 @@ supplementary_simulation_map <- data.frame(
   existing_script = c(
     "simulation/code/main_spd.R", "simulation/code/main_sphere.R",
     "simulation/code/main_spd.R", "simulation/code/main_sphere.R",
-    "simulation/code/main_spd.R", "simulation/code/main_spd.R",
-    "simulation/code/main_spd.R", "simulation/code/main_spd.R",
+    rep("simulation/code/main_spd_logcholesky.R", 4),
     "simulation/code/radius_spd.R", "simulation/code/radius_sphere.R",
     "simulation/code/rate_spd.R",
     "simulation/code/rate_sphere.R",
@@ -168,10 +167,10 @@ supplementary_simulation_map <- data.frame(
     'scenario="Swiss3", kappa=5, sigma=0.25, n1=100, NN=8000, n3=1000',
     'scenario="Swiss4", setting=2, snr=4, method="LogEuclidean", n1=200, NN=8000, n3=1000',
     'scenario="Swiss4", kappa=5, sigma=0.25, n1=200, NN=8000, n3=1000',
-    'scenario="Swiss", setting=2, snr=2, method="LogCholesky", n1=100, NN=8000, n3=1000',
-    'scenario="Swiss", setting=2, snr=4, method="LogCholesky", n1=100, NN=8000, n3=1000',
-    'scenario="Swiss2", setting=2, snr=2, method="LogCholesky", n1=200, NN=8000, n3=1000',
-    'scenario="Swiss2", setting=2, snr=4, method="LogCholesky", n1=200, NN=8000, n3=1000',
+    'scenario="Swiss", setting=2, snr=2, n1=100, test_size=1000',
+    'scenario="Swiss", setting=2, snr=4, n1=100, test_size=1000',
+    'scenario="Swiss2", setting=2, snr=2, n1=200, test_size=1000',
+    'scenario="Swiss2", setting=2, snr=4, n1=200, test_size=1000',
     'scenario="Swiss2", setting=1, snr=2, method="LogEuclidean", n1=200, n2=3000, n3=1000',
     'scenario="Swiss2", kappa=0, sigma=0.25, n1=200, n2=3000, n3=1000',
     'scenario="Swiss2", setting=1, snr=2, method="LogEuclidean", unlabeled n1=3000, labeled NN=1500, n3=1000',
@@ -359,9 +358,9 @@ figure_4a
 
 ## Figure 4(b): empirical convergence rate
 
-The saved rate file stores semi-kNN in column `V1` and semi-NW in column `V2`. The manuscript panel uses semi-kNN, so the chunk below explicitly selects `V1` and reports the fitted slope and $R^2$ together with the plot.
+The saved rate file stores semi-kNN in column `V1` and semi-NW in column `V2`. The manuscript panel uses semi-kNN, so the chunk below explicitly selects `V1`. Dashed lines connect the observed values, and the solid line is a theoretical reference with slope $-0.387$. The fitted empirical slope and $R^2$ are reported separately.
 
-```{r reproduce-figure-4b, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 4(b): log(AMSE) against log(n) for the semi-kNN estimator."}
+```{r reproduce-figure-4b, fig.width=9, fig.height=6, fig.align="center", out.width="85%", fig.cap="Reproduced Figure 4(b): observed log(AMSE) values connected by dashed lines and a solid theoretical reference line with slope -0.387 for the semi-kNN estimator."}
 rate_result <- read_simulation_result(
   visual_verification_files[["Figure 4(b)"]],
   expected_rows = 8,
@@ -391,7 +390,9 @@ plot(
   col.axis = "black",
   bg = "white"
 )
-abline(rate_model, col = "#66a61e", lwd = 2.7, lty = 1)
+rate_slope <- -0.387
+abline(a = mean(rate_y) - rate_slope * mean(rate_x),
+       b = rate_slope, col = "#66a61e", lwd = 2.7, lty = 1)
 grid(col = "grey80", lty = c(8, 4), lwd = 0.8)
 box(col = "black", lwd = 1)
 par(old_par)
@@ -486,10 +487,11 @@ The following chunks are set to `eval=FALSE` because the simulations are relativ
 old_dir <- getwd()
 setwd(sim_code)
 
-# main_spd.R runs the SPD-matrix response simulations:
-# Figures 2 and 3; Figure 4(c); Figures S.1(a), S.2(a), S.3, S.4, and S.9.
+# main_spd.R runs the log-Euclidean SPD simulations for Figures 2, 3, 4(c),
+# S.1(a), S.2(a), and S.9.
 source("main_spd.R")
 
+# For Figure S.3 (Swiss) or S.4 (Swiss2), run source("main_spd_logcholesky.R") instead.
 setwd(old_dir)
 ```
 
